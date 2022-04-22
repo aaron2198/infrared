@@ -10,7 +10,7 @@ services:
     ports:
       - "25565:25565/tcp"
     volumes:
-      - "/usr/local/infrared/configs:/configs"
+      - "../infraredConfigs:/configs"
     expose:
       - "25565"
     environment:

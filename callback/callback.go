@@ -3,6 +3,7 @@ package callback
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -19,6 +20,10 @@ type EventLog struct {
 	Payload   interface{} `json:"payload"`
 }
 
+type DiscordEventLog struct {
+	Content string `json:"content"`
+}
+
 func newEventLog(event Event) EventLog {
 	return EventLog{
 		Event:     event.EventType(),
@@ -27,9 +32,17 @@ func newEventLog(event Event) EventLog {
 	}
 }
 
+func newDiscordEventLog(event Event) DiscordEventLog {
+	msg := fmt.Sprintf("[%s] %s", time.Now().String(), event.EventMsg())
+	return DiscordEventLog{
+		Content: msg,
+	}
+}
+
 // Logger can post events to an http endpoint
 type Logger struct {
-	client HTTPClient
+	client  HTTPClient
+	Discord bool
 
 	URL    string
 	Events []string
@@ -67,20 +80,40 @@ func (logger Logger) LogEvent(event Event) (*EventLog, error) {
 	}
 
 	eventLog := newEventLog(event)
-	bb, err := json.Marshal(eventLog)
-	if err != nil {
-		return nil, err
-	}
 
-	request, err := http.NewRequest(http.MethodPost, logger.URL, bytes.NewReader(bb))
-	if err != nil {
-		return nil, err
-	}
+	if logger.Discord {
+		// Discord hook
+		discordEventLog := newDiscordEventLog(event)
 
-	_, err = logger.client.Do(request)
-	if err != nil {
-		return nil, err
-	}
+		bb, err := json.Marshal(discordEventLog)
+		if err != nil {
+			return nil, err
+		}
 
+		request, err := http.NewRequest(http.MethodPost, logger.URL, bytes.NewReader(bb))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Content-Type", "application/json")
+		_, err = logger.client.Do(request)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		bb, err := json.Marshal(eventLog)
+		if err != nil {
+			return nil, err
+		}
+
+		request, err := http.NewRequest(http.MethodPost, logger.URL, bytes.NewReader(bb))
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = logger.client.Do(request)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &eventLog, nil
 }

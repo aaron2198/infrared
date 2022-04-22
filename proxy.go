@@ -149,8 +149,9 @@ func (proxy *Proxy) CallbackLogger() callback.Logger {
 	proxy.Config.RLock()
 	defer proxy.Config.RUnlock()
 	return callback.Logger{
-		URL:    proxy.Config.CallbackServer.URL,
-		Events: proxy.Config.CallbackServer.Events,
+		URL:     proxy.Config.CallbackServer.URL,
+		Events:  proxy.Config.CallbackServer.Events,
+		Discord: proxy.Config.Discord.Enable,
 	}
 }
 

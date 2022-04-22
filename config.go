@@ -41,6 +41,11 @@ type ProxyConfig struct {
 	OnlineStatus      StatusConfig         `json:"onlineStatus"`
 	OfflineStatus     StatusConfig         `json:"offlineStatus"`
 	CallbackServer    CallbackServerConfig `json:"callbackServer"`
+	Discord           DiscordServerConfig  `json:"discord"`
+}
+
+type DiscordServerConfig struct {
+	Enable bool `json:"enable"`
 }
 
 func (cfg *ProxyConfig) Dialer() (*Dialer, error) {
@@ -193,6 +198,9 @@ func DefaultProxyConfig() ProxyConfig {
 			ProtocolNumber: 755,
 			MaxPlayers:     20,
 			MOTD:           "Powered by Infrared",
+		},
+		Discord: DiscordServerConfig{
+			Enable: false,
 		},
 	}
 }
