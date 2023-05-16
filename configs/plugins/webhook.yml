@@ -27,6 +27,10 @@ webhook:
       #
       dialTimeout: 1s
       
+      # The server IDs to listen for events to. Omit this to listen for all events from the associated gateway.
+      #serverIds:
+      #  - default
+      
       # Event Topics to listen for.
       # Available events are:
       # - AcceptedConn - When a new connection to Infrared is made.
@@ -39,6 +43,26 @@ webhook:
       events:
         - PlayerJoin
         - PlayerLeave
+      
+      # Optional payload formatting to assist with 3rd party services
+      format:
+        # uses the original format of infrared with a general event json. (options: default, discord, slack)
+        type: default
+        # allows a custom message for each event topic described above. All datapoints in the default 
+        # payload are available for subsitution. if unspecified, sends the original payload
+        # - edition - the type of minecraft server
+        # - gatewayId - the gateway id as specified above
+        # - conn.network - the network 
+        # - conn.localAddress - the address the client is connecting to, this infrared server
+        # - conn.remoteAddress - the address of the client
+        # - conn.username - the username of the client
+        # - server.serverId - the id of the server
+        # - server.serverAddress - the address of the server
+        # - server.domains - the domains that were allowed for this server
+        # - isLoginRequest - if this was a login request
+        messageMap:
+          PlayerJoin: player {{conn.username}} has joined {{server.serverId}}
+          PlayerLeave: player {{conn.username}} has left {{server.serverId}}
 
 # Defaults are global default values that can be 
 #

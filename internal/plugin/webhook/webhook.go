@@ -42,10 +42,12 @@ func (cfg PluginConfig) loadWebhooks() (map[string][]webhook.Webhook, error) {
 }
 
 type webhookConfig struct {
-	DialTimeout time.Duration `mapstructure:"dialTimeout"`
-	URL         string        `mapstructure:"url"`
-	Events      []string      `mapstructure:"events"`
-	GatewayIDs  []string      `mapstructure:"gatewayIds"`
+	DialTimeout time.Duration           `mapstructure:"dialTimeout"`
+	URL         string                  `mapstructure:"url"`
+	Events      []string                `mapstructure:"events"`
+	GatewayIDs  []string                `mapstructure:"gatewayIds"`
+	ServerIDs   []string                `mapstructure:"serverIds"`
+	Format      webhook.FormatterConfig `mapstructure:"format"`
 }
 
 func newWebhook(id string, cfg webhookConfig) webhook.Webhook {
@@ -54,8 +56,10 @@ func newWebhook(id string, cfg webhookConfig) webhook.Webhook {
 		HTTPClient: &http.Client{
 			Timeout: cfg.DialTimeout,
 		},
-		URL:           cfg.URL,
-		AllowedTopics: cfg.Events,
+		URL:            cfg.URL,
+		AllowedServers: cfg.ServerIDs,
+		AllowedTopics:  cfg.Events,
+		Formatter:      webhook.CreateFormatter(cfg.Format),
 	}
 }
 
@@ -120,24 +124,7 @@ func (p *Plugin) Disable() error {
 	return nil
 }
 
-type eventData struct {
-	Edition   string `json:"edition"`
-	GatewayID string `json:"gatewayId"`
-	Conn      struct {
-		Network    string `json:"network"`
-		LocalAddr  string `json:"localAddress"`
-		RemoteAddr string `json:"remoteAddress"`
-		Username   string `json:"username,omitempty"`
-	} `json:"client"`
-	Server struct {
-		ServerID   string   `json:"serverId,omitempty"`
-		ServerAddr string   `json:"serverAddress,omitempty"`
-		Domains    []string `json:"domains,omitempty"`
-	} `json:"server"`
-	IsLoginRequest *bool `json:"isLoginRequest,omitempty"`
-}
-
-func unmarshalConn(data *eventData, c infrared.Conn) {
+func unmarshalConn(data *webhook.EventData, c infrared.Conn) {
 	data.Edition = c.Edition().String()
 	data.Conn.Network = c.LocalAddr().Network()
 	data.Conn.LocalAddr = c.LocalAddr().String()
@@ -145,7 +132,7 @@ func unmarshalConn(data *eventData, c infrared.Conn) {
 	data.GatewayID = c.GatewayID()
 }
 
-func unmarshalProcessedConn(data *eventData, pc infrared.Player) {
+func unmarshalProcessedConn(data *webhook.EventData, pc infrared.Player) {
 	unmarshalConn(data, pc)
 	data.Server.ServerAddr = pc.MatchedAddr()
 	data.Conn.Username = pc.Username()
@@ -153,43 +140,50 @@ func unmarshalProcessedConn(data *eventData, pc infrared.Player) {
 	data.IsLoginRequest = &isLoginRequest
 }
 
-func unmarshalServer(data *eventData, s infrared.Server) {
+func unmarshalServer(data *webhook.EventData, s infrared.Server) {
 	data.Server.ServerID = s.ID()
 	data.Server.Domains = s.Domains()
 }
 
 func (p Plugin) handleEvent(e event.Event) {
-	var data eventData
+	var data webhook.EventData
+	var eventType = ""
 	switch e := e.Data.(type) {
 	case infrared.AcceptedConnEvent:
 		unmarshalConn(&data, e.Conn)
+		eventType = "AcceptedConn"
 	case infrared.PreConnProcessingEvent:
 		unmarshalConn(&data, e.Conn)
+		eventType = "PreProcessing"
 	case infrared.PostConnProcessingEvent:
 		unmarshalProcessedConn(&data, e.Player)
+		eventType = "PostProcessing"
 	case infrared.PrePlayerJoinEvent:
 		unmarshalProcessedConn(&data, e.Player)
 		unmarshalServer(&data, e.Server)
+		eventType = "PrePlayerJoin"
 	case infrared.PlayerJoinEvent:
 		unmarshalProcessedConn(&data, e.Player)
 		unmarshalServer(&data, e.Server)
+		eventType = "PlayerJoin"
 	case infrared.PlayerLeaveEvent:
 		unmarshalProcessedConn(&data, e.Player)
 		unmarshalServer(&data, e.Server)
+		eventType = "PlayerLeave"
 	default:
 		return
 	}
 
-	p.dispatchEvent(e, data)
+	p.dispatchEvent(eventType, e, data)
 }
 
-func (p Plugin) dispatchEvent(e event.Event, data eventData) {
+func (p Plugin) dispatchEvent(eventType string, e event.Event, data webhook.EventData) {
 	el := webhook.EventLog{
+		Type:       eventType,
 		Topics:     e.Topics,
 		OccurredAt: e.OccurredAt,
 		Data:       data,
 	}
-
 	for _, wh := range p.whks[data.GatewayID] {
 		if err := wh.DispatchEvent(el); err != nil && !errors.Is(err, webhook.ErrEventTypeNotAllowed) {
 			p.logger.Error("dispatching webhook event",
